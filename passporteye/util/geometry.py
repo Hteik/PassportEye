@@ -136,17 +136,51 @@ class RotatedBox(object):
 
         TODO: This could be made more efficient if we avoid rotating the full image and cut out the ROI from it beforehand.
         """
+#        print(idx, 'extract_from_image', self, scale)
         rotate_by = (np.pi/2 - self.angle)*180/np.pi
-        img_rotated = transform.rotate(img, angle=rotate_by, center=[self.center[1]*scale, self.center[0]*scale], resize=True)
+        img_rotated = transform.rotate(img, angle=rotate_by, resize=True)
+#        skimage_io.imsave('img_rotated_%d.jpg' % idx, img_rotated)
+        
         # The resizeable transform will shift the resulting image somewhat wrt original coordinates.
         # When we cut out the box we will compensate for this shift.
-        shift_c, shift_r = self._compensate_rotation_shift(img, scale)
+#        shift_c, shift_r = self._compensate_rotation_shift(img, scale)
+#        print('shift: ', shift_c, shift_r)
 
-        r1 = max(int((self.center[0] - self.height/2 - margin_height)*scale - shift_r), 0)
-        r2 = int((self.center[0] + self.height/2 + margin_height)*scale - shift_r)
-        c1 = max(int((self.center[1] - self.width/2 - margin_width)*scale - shift_c), 0)
-        c2 = int((self.center[1] + self.width/2 + margin_width)*scale - shift_c)
+        rotated_center_r, rotated_center_c = self._rotated_center(img, scale)
+        
+#        r1 = max(int((self.center[0] - self.height/2 - margin_height)*scale - shift_r), 0)
+#        r2 = int((self.center[0] + self.height/2 + margin_height)*scale - shift_r)
+#        c1 = max(int((self.center[1] - self.width/2 - margin_width)*scale - shift_c), 0)
+#        c2 = int((self.center[1] + self.width/2 + margin_width)*scale - shift_c)
+        r1 = max(int((rotated_center_r - self.height/2 - margin_height)*scale), 0)
+        r2 = int((rotated_center_r + self.height/2 + margin_height)*scale)
+        c1 = max(int((rotated_center_c - self.width/2 - margin_width)*scale), 0)
+        c2 = int((rotated_center_c + self.width/2 + margin_width)*scale)
+#       print('idx %d: (%.1f,%.1f)-(%.1f,%.1f)' % (idx, c1, r1, c2, r2))
         return img_rotated[r1:r2, c1:c2]
+    
+    def _rotated_center(self, img, scale):
+        tform = transform.SimilarityTransform(rotation=np.pi/2 - self.angle)
+        rows, cols = img.shape[0], img.shape[1]
+        corners = np.array([
+            [self.center[1]*scale, self.center[0]*scale],
+            [0, 0],
+            [0, rows - 1],
+            [cols - 1, rows - 1],
+            [cols - 1, 0]
+        ])
+#        print('corners: ', corners)
+        t_corners = tform.inverse(corners)
+#        print('t_corners: ', t_corners)
+        minr = t_corners[:, 1].min()
+        minc = t_corners[:, 0].min()
+#        print(minr, minc)
+        rotated_center_r = t_corners[0][1] - minr
+        rotated_center_c = t_corners[0][0] - minc
+#        print(rotated_center_r, rotated_center_c)
+        return (rotated_center_r/scale, rotated_center_c/scale)
+    
+    
 
     def _compensate_rotation_shift(self, img, scale):
         """This is an auxiliary method used by extract_from_image.
